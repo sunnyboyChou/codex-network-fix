@@ -63,6 +63,28 @@ updated: "2026-08-18"
 - **换 Clash 端口/换机器**需同步更新上述命令的端口，不能硬编码 7897（命令中的端口需用本机实际探测值替换）。
 - websocket/MCP **不是根因**（走代理时 websocket 能连通；MCP 并行不阻塞），诊断时快速排除、不要深挖。
 
+
+## 最终最佳实践（待官方 respect_system_proxies 可用）
+
+当前 launchctl 注入是**临时 workaround**（全局作用于所有 GUI 应用）。**终极修复方案**是等 codex 官方使 `respect_system_proxies` 真正生效：
+
+```toml
+# ~/.codex/config.toml
+[features]
+respect_system_proxies = true
+```
+
+一旦官方修复（见 openai/codex issue #39237），应：
+1. **停用** launchctl 注入（`launchctl unsetenv HTTPS_PROXY/HTTP_PROXY/ALL_PROXY/NO_PROXY` + 卸载 LaunchAgent）
+2. **改用** codex 维度配置：`respect_system_proxies = true`（App + CLI 都生效，无需全局 env）
+3. 验证：`codex exec` 无 env 时也能走系统代理、无 SYN_SENT 直连
+
+**判断官方是否已修复**：
+- 升级 codex 后，在无 `HTTPS_PROXY` env 下运行 CLI，若请求正常走系统代理（`lsof` 无直连 SYN_SENT）→ 已修复
+- 或关注 issue #39237 状态
+
+> 在官方修复前，保持当前 launchctl workaround（已验证可靠，副作用可控）。
+
 ## Verification
 
 1. `launchctl getenv HTTPS_PROXY` 返回 `http://127.0.0.1:7897`

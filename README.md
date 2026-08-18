@@ -60,3 +60,15 @@ Skill 会自动：
     ├── com.didi.codex-relay.plist               # relay launchd 服务
     └── com.didi.codex-token-refresh.plist       # token 每日刷新定时
 ```
+
+## 终极修复（官方 respect_system_proxies）
+
+当前方案是**临时 workaround**（launchctl 全局注入）。终极方案是 codex 官方使 `respect_system_proxies = true` 真正生效（已提 issue [openai/codex#39237](https://github.com/openai/codex/issues/39237)）。
+
+官方修复后，用户只需：
+```toml
+# ~/.codex/config.toml
+[features]
+respect_system_proxies = true
+```
+即可让 Codex（App + CLI）都走系统代理，无需全局 launchctl 注入。
