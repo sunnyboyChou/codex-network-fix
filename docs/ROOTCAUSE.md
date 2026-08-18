@@ -58,7 +58,33 @@ launchctl setenv NO_PROXY "localhost,127.0.0.1,*.xiaojukeji.com,*.didichuxing.co
 - **作用域**：全局（所有 GUI 应用），非仅 Codex；NO_PROXY 已排除内网域名，副作用可控
 - **换 Clash 端口**：需同步修改 `set-proxy-env.sh` 的端口（收束到新端口）
 - **换机器**：按该机器实际代理端口调整命令
-- **治本方向**：codex 官方修复 `respect_system_proxies` 使其真正生效（当前实测无效——CLI 无 env 仍超时，仅 chatgpt.com 走 Clash 规则、其他域名仍直连）。若官方修复，则为 codex 维度（App+CLI）的精准方案，无需全局 launchctl。
+
+## respect_system_proxies 实测验证记录（2026-08-18）
+
+**结论：`respect_system_proxies = true` 在 codex 0.148.0-alpha.9 中不生效**（实验性 gate 实现未完成）。已提 issue [openai/codex#39237](https://github.com/openai/codex/issues/39237)。
+
+### 实验步骤与结果
+
+| 步骤 | 结果 |
+|---|---|
+| macOS 系统代理已设（`scutil --proxy` 显示 HTTP/HTTPS → 127.0.0.1:7897） | ✅ |
+| `~/.codex/config.toml` 加 `[features] respect_system_proxies = true` | ✅ |
+| 移除所有代理 env（`env -u HTTPS_PROXY -u HTTP_PROXY -u ALL_PROXY -u NO_PROXY`）跑 CLI | ❌ **超时 120s** |
+| 观察连接 | 仅 chatgpt.com 走 Clash 规则（侥幸命中规则），**Twitter/X 等仍直连** |
+| 结论 | feature **没有**让 codex 读 macOS 系统代理 |
+
+### 为什么实验可信
+
+1. **系统代理确实开着**（scutil 确认 HTTPEnable=1, HTTPPort=7897）——若 feature 生效，codex 应能读到
+2. **移除了所有 env**——排除 env 干扰，只测 feature 本身
+3. **观察了连接层**（mihomo connections + lsof）——确认仍直连，而非只是慢
+4. **CLI 是测试对象**——CLI 与 App 同一二进制，CLI 不生效则 App 也不会（App 还额外受 launchd env 缺失影响）
+
+### 对修复策略的影响
+
+- **当前**：继续用 launchctl 全局注入（已验证可靠，副作用可控）
+- **终极**：等官方修复 issue #39237 后，切到 `respect_system_proxies = true`（codex 维度，App+CLI 精准，无需全局 env）
+- **切换判断**：升级 codex 后，无 `HTTPS_PROXY` env 下 CLI 请求走系统代理（lsof 无直连 SYN_SENT）→ 已修复
 
 ## 方法论教训
 
