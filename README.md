@@ -4,6 +4,17 @@ Codex App（ChatGPT 桌面版）会话重连 / 连接失败 / 响应极慢的**�
 
 此外收录了经过真实大输入验收的 [Codex App 1M 上下文配置与回滚指南](docs/Codex%20App%201M%20上下文配置与回滚.md)，用于处理 GPT-5.6 Sol API 支持长上下文、但 Codex App 仍被模型目录限制在约 258K 的情况。
 
+## 按需求选择文件
+
+不需要默认加载整个仓库。人类用户或 AI agent 请先阅读 [按需导入与 AI 文件选择指南](docs/按需导入与%20AI%20文件选择指南.md)，再按目标选择最小文件集合：
+
+| 目标 | 最小入口 |
+|---|---|
+| 只启用 1M 上下文 | `docs/Codex App 1M 上下文配置与回滚.md` + `scripts/codex-1m-context.py` |
+| 只修复 App 连接失败 | `skills/fix-codex-app-network-failure/SKILL.md` |
+| 只配置 pi 订阅账号登录 | `skills/pi-openai-subscription-login/SKILL.md` + `scripts/codex-relay.py` |
+| 深入研究网络根因 | `docs/ROOTCAUSE.md` |
+
 ## 根因（一句话）
 
 Codex 的 GUI 进程（app-server）启动时**没有继承代理环境变量**，导致对非 OpenAI 域名（Twitter/X 等，不在 Clash 规则内）**直连**，在受限网络下 TCP 连接永久卡死（SYN_SENT），阻塞请求 → 表现为"重连 5 次"、响应极慢。
@@ -53,6 +64,7 @@ Skill 会自动：
 │   ├── fix-codex-app-network-failure/SKILL.md   # Codex App 连接失败诊断修复
 │   └── pi-openai-subscription-login/SKILL.md    # pi + GPT 订阅账号登录（浏览器指纹转发）
 ├── docs/
+│   ├── 按需导入与 AI 文件选择指南.md             # AI/用户按目标选择最小文件集合
 │   ├── Codex App 连接失败诊断与修复.md           # 通用诊断文档（跨平台、agent 可执行）
 │   ├── Codex App 1M 上下文配置与回滚.md          # 1M 原理、启用、验收和一键回滚
 │   └── ROOTCAUSE.md                             # 完整根因链与证据
