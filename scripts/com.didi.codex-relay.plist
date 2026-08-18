@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.didi.codex-relay</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/didi/tools/codex-relay/codex-relay.py</string>
+        <string>--port</string>
+        <string>8899</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/didi/tools/codex-relay</string>
+    <key>StandardOutPath</key>
+    <string>/Users/didi/tools/codex-relay/relay.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/didi/tools/codex-relay/relay.log</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

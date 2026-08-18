@@ -48,10 +48,15 @@ Skill 会自动：
 
 ```
 ├── skills/
-│   └── fix-codex-app-network-failure/SKILL.md   # skill 本体（含诊断/修复/回滚）
+│   ├── fix-codex-app-network-failure/SKILL.md   # Codex App 连接失败诊断修复
+│   └── pi-openai-subscription-login/SKILL.md    # pi + GPT 订阅账号登录（浏览器指纹转发）
 ├── docs/
 │   ├── Codex App 连接失败诊断与修复.md           # 通用诊断文档（跨平台、agent 可执行）
 │   └── ROOTCAUSE.md                             # 完整根因链与证据
 └── scripts/
-    └── set-proxy-env.sh                         # macOS 代理 env 脚本（SKILL.md 已内嵌等价命令）
+    ├── codex-relay.py                           # pi 转发层（curl_cffi Chrome 指纹）
+    ├── set-proxy-env.sh                         # macOS 代理 env 脚本
+    ├── refresh-token.py                         # OAuth token 自动刷新
+    ├── com.didi.codex-relay.plist               # relay launchd 服务
+    └── com.didi.codex-token-refresh.plist       # token 每日刷新定时
 ```
