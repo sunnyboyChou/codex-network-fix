@@ -77,14 +77,17 @@ Skill 会自动：
     └── com.didi.codex-token-refresh.plist       # token 每日刷新定时
 ```
 
-## 终极修复（官方 respect_system_proxies）
+## 终极修复（2026-08-19 实测：单数键 respect_system_proxy 已可用）
 
-当前方案是**临时 workaround**（launchctl 全局注入）。终极方案是 codex 官方使 `respect_system_proxies = true` 真正生效（已提 issue [openai/codex#39237](https://github.com/openai/codex/issues/39237)）。
-
-官方修复后，用户只需：
+**首选方案**（codex 维度，App+CLI+subagent 全部生效，无需任何环境变量）：
 ```toml
 # ~/.codex/config.toml
 [features]
-respect_system_proxies = true
+respect_system_proxy = true   # 注意是单数 proxy，不是 proxies！
 ```
-即可让 Codex（App + CLI）都走系统代理，无需全局 launchctl 注入。
+
+**实测结果（codex 0.148.0-alpha.9，2026-08-19）**：移除全部代理 env（`launchctl unsetenv HTTPS_PROXY/HTTP_PROXY/ALL_PROXY`）后，CLI 无 env 执行成功（exit=0，lsof 确认 ESTABLISHED → 127.0.0.1:7897，0 条 SYN_SENT）、App 新会话秒开、subagent 首次创建成功无重试。
+
+**fallback**（单数键不可用时的旧方案）：launchctl 全局注入，见 skill `skills/fix-codex-app-network-failure/SKILL.md` 与 `scripts/set-proxy-env.sh`。
+
+> 关键坑：键名是**单数** `respect_system_proxy`。复数 `respect_system_proxies` 会被 `[features]` 静默忽略（不报错、不生效），这是 2026-08-18 误判

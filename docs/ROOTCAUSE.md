@@ -59,33 +59,38 @@ launchctl setenv NO_PROXY "localhost,127.0.0.1,*.xiaojukeji.com,*.didichuxing.co
 - **换 Clash 端口**：需同步修改 `set-proxy-env.sh` 的端口（收束到新端口）
 - **换机器**：按该机器实际代理端口调整命令
 
-## respect_system_proxies 实测验证记录（2026-08-18）
+## respect_system_proxy 实测验证记录（2026-08-18 初判 → 2026-08-19 修正）
 
-**结论：`respect_system_proxies = true` 在 codex 0.148.0-alpha.9 中不生效**（实验性 gate 实现未完成）。已提 issue [openai/codex#39237](https://github.com/openai/codex/issues/39237)。
+**2026-08-18 初判**：`respect_system_proxies = true`（**复数**）在 codex 0.148.0-alpha.9 中"不生效"，据此提了 issue [openai/codex#39237](https://github.com/openai/codex/issues/39237)。
 
-### 实验步骤与结果
+**2026-08-19 修正（issue 评论确认 + 本机实测）**：**键名写错了**——应为**单数** `respect_system_proxy`。复数键会被 `[features]` 静默忽略（自由键映射不报错），所以策略停留在 `ReqwestDefault`（读 env，无 env 直连）。单数键把 `OutboundProxyPolicy` 切到 `RespectSystemProxy`，codex 直接读 macOS 系统代理。
+
+### 2026-08-18 实验（复数键，结果"无效"）
 
 | 步骤 | 结果 |
 |---|---|
 | macOS 系统代理已设（`scutil --proxy` 显示 HTTP/HTTPS → 127.0.0.1:7897） | ✅ |
-| `~/.codex/config.toml` 加 `[features] respect_system_proxies = true` | ✅ |
+| `~/.codex/config.toml` 加 `[features] respect_system_proxies = true`（**复数**） | ✅ 解析但不生效 |
 | 移除所有代理 env（`env -u HTTPS_PROXY -u HTTP_PROXY -u ALL_PROXY -u NO_PROXY`）跑 CLI | ❌ **超时 120s** |
 | 观察连接 | 仅 chatgpt.com 走 Clash 规则（侥幸命中规则），**Twitter/X 等仍直连** |
-| 结论 | feature **没有**让 codex 读 macOS 系统代理 |
+| 结论 | 复数键**不**让 codex 读 macOS 系统代理（被静默忽略） |
 
-### 为什么实验可信
+### 2026-08-19 实测（单数键，结果"生效"）
 
-1. **系统代理确实开着**（scutil 确认 HTTPEnable=1, HTTPPort=7897）——若 feature 生效，codex 应能读到
-2. **移除了所有 env**——排除 env 干扰，只测 feature 本身
-3. **观察了连接层**（mihomo connections + lsof）——确认仍直连，而非只是慢
-4. **CLI 是测试对象**——CLI 与 App 同一二进制，CLI 不生效则 App 也不会（App 还额外受 launchd env 缺失影响）
+| 步骤 | 结果 |
+|---|---|
+| `[features] respect_system_proxy = true`（**单数**） | ✅ 生效 |
+| CLI：移除全部代理 env 跑 `codex exec "Reply OK"` | ✅ exit=0，11s 返回 |
+| 连接层：lsof 观察 | ✅ 3 条 ESTABLISHED → 127.0.0.1:7897，0 条 SYN_SENT |
+| App app-server：完全退出重启（launchctl env 已移除） | ✅ 新会话秒开 |
+| subagent：无 env 环境下 spawn | ✅ 首次创建成功、无重试 |
+| 旁证：subagent 内裸 curl 直连 chatgpt.com | ❌ 超时（预期，curl 不读系统代理，需显式 -x） |
 
 ### 对修复策略的影响
 
-- **当前**：继续用 launchctl 全局注入（已验证可靠，副作用可控）
-- **终极**：等官方修复 issue #39237 后，切到 `respect_system_proxies = true`（codex 维度，App+CLI 精准，无需全局 env）
-- **切换判断**：升级 codex 后，无 `HTTPS_PROXY` env 下 CLI 请求走系统代理（lsof 无直连 SYN_SENT）→ 已修复
-
+- **当前**：首选单数键 `respect_system_proxy = true`（codex 维度，App+CLI+subagent 生效，无需全局 env）
+- **fallback**：单数键不可用（旧版本、非 macOS、模式缺陷）时用 launchctl 全局注入（已验证可靠，副作用可控）
+- **关键坑**：键名单复数区分——复数被静默忽略不报错，容易误判为"feature 无效"
 ## 方法论教训
 
 1. **排除法必须先证明干预生效**：websocket 那次"禁用后耗时不变"未验证禁用是否生效，差点走偏。正确做法是验证"codex 确实不再走 websocket"（对照日志）。
