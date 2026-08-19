@@ -51,7 +51,7 @@ python3 codex-relay.py --port 8899
 launchctl load ~/Library/LaunchAgents/com.didi.codex-relay.plist
 ```
 
-### 2. 配置 pi
+### 2. 配置 pi（关键：默认通道必须是 openai-codex）
 
 ```bash
 # models.json: openai-codex baseUrl → 本地转发层
@@ -63,9 +63,22 @@ cat > ~/.pi/agent/models.json << 'EOF'
 }
 EOF
 
-# settings.json: 强制 SSE（避开 websocket 传输）
-# 添加: "transport": "sse"
+# settings.json: 强制 SSE（避开 websocket 传输）+ 默认走订阅
+# ⚠️ 三个字段缺一不可，缺失/错误会让新会话回退到 apiKey 通道：
+cat > ~/.pi/agent/settings.json << 'EOF'
+{
+  "defaultProvider": "openai-codex",   # ★ 必须是 openai-codex，不能是 openai
+  "defaultModel": "gpt-5.6-sol",
+  "transport": "sse"                    # ★ 必须是 sse，不能是 auto
+}
+EOF
+
+# 验证（应输出 openai-codex）：
+python3 -c "import json; d=json.load(open('$HOME/.pi/agent/settings.json')); print(d['defaultProvider'])"
 ```
+
+**为什么 defaultProvider 必须是 openai-codex**：若为 `openai`，不带前缀选 gpt-5.6-sol 会解析到 `api.openai.com` + sk-proj API key（订阅余额不转入 API，报 429 insufficient_quota）→ 空回复。只有 `openai-codex` 走本地 relay（OAuth 订阅，免费）。用 deepseek 时显式 `--provider deepseek`，不要依赖默认值。
+
 
 ### 3. 获取订阅 token（OAuth）
 
@@ -119,6 +132,7 @@ python3 refresh-token.py --force   # 手动强制刷新
 - **转发层必须处理 zstd**：pi 的 SSE body 是 zstd 压缩的（`content-encoding: zstd`），relay 需透传该头（codex-relay.py 已处理）。
 - **路径前缀**：pi 请求 `/codex/responses`（缺 `/backend-api` 前缀），relay 需自动补前缀（已处理）。
 - **订阅 ≠ API credits**：Pro 订阅不转入 API 余额，`api.openai.com` 走 API key 会报 429 insufficient_quota。必须走 openai-codex provider（订阅 OAuth）。
+- **defaultProvider 被改回 openai 是最常见故障**（2026-08-19 实测踩坑）：症状 = 新会话 4 次空回复/连不通；确认方法 = 看会话 jsonl 里 `model_change` 行的 provider 字段。修复 = settings.json 改回 `openai-codex`。
 - **换端口**：改 codex-relay.py 的 PROXY 常量或 models.json 的 baseUrl 端口，需保持一致。
 
 ## Verification
