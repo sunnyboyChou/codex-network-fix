@@ -56,6 +56,7 @@ updated: "2026-08-19"
 ## Pitfalls
 
 - **键名单复数**：是 `respect_system_proxy`（**单数**）。复数 `respect_system_proxies` 会被 `[features]` **静默忽略**（不报错、不生效），这是 2026-08-18 误判"实测无效"的根因。
+- **修改前提必须用最强证据确认**（2026-08-19 沉重教训）：codex 是**开源项目**（`github.com/openai/codex`，Rust 源码），确认键名/行为应**直接查源码**（如 `config_loader_tests.rs`、`config/mod.rs`），而不是反推二进制。`strings` 输出的 feature 列表是无分隔符连续字符串（`network_proxyrespect_system_proxymulti_agent`），人工解析极易看错键边界；英文语感"复数更自然"也会先入为主。**改配置前先验证键存在**：`strings "$BIN" | grep -c 'respect_system_proxy'`（本次：单数 8 次、复数 0 次）。错误前提 + 看似严谨的实验 = 更可信的错觉（本次把"配置无效"误判为"feature 无效"）。
 - **不要直接套用修复**：只有确认本机 app-server 无代理 / 存在直连 SYN_SENT 才修复；否则如实告知用户其他方向（网络、代理节点、账号）。
 - `~/.codex/config.toml` 的 `[features] responses_websockets = false` **实测不生效**（codex 仍走 websocket），不要用它做修复或排除依据。
 - **subagent 内 curl 超时是预期**：curl 子进程只认 `-x` 参数或 `HTTPS_PROXY` env，**不读 macOS 系统代理**。单数键只影响 codex 自身的 HTTP 客户端。要让 subagent 里 curl 走代理，需显式 `-x` 或子进程带 env。
