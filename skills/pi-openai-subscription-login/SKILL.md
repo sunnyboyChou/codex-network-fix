@@ -1,9 +1,9 @@
 ---
 name: "pi-openai-subscription-login"
 description: "让 pi（pi-coding-agent）通过 ChatGPT 订阅账号（不耗 API credits）使用 gpt-5.6 等模型。核心：本地转发层用 curl_cffi 模拟 Chrome TLS 指纹，绕过 Cloudflare 对 Node.js 非浏览器指纹的 403 风控。当 pi 中 openai-codex 认证失败、api 403、或想用订阅账号免费调 GPT 时使用。"
-version: 1
+version: 2
 created: "2026-08-18"
-updated: "2026-08-18"
+updated: "2026-08-19"
 ---
 
 ## When to Use
@@ -27,12 +27,16 @@ pi (openai-codex / gpt-5.6-sol)
   ├─ baseUrl → http://127.0.0.1:8899（models.json 覆盖）
   └─ transport: "sse"（settings.json）
         ▼
-  [codex-relay.py] (launchd 常驻, 端口 8899)
+  [codex-relay.py] (按需启动 / launchd 常驻, 端口 8899)
         │  curl_cffi impersonate="chrome"（Chrome TLS 指纹）
         │  走 Clash 代理
         ▼
   chatgpt.com/backend-api  ← 200 ✅（绕过 Cloudflare 指纹风控）
 ```
+
+**relay 启动方式（二选一）**：
+- **按需懒启动（推荐，2026-08-19 本机采用）**：不随开机自启，跟随 `pi` / `pi-web` 命令自动拉起（见下文「relay 按需启动」）
+- **launchd 常驻**：开机自启 + 崩溃重启，适合多终端/定时场景（见下文「launchd 常驻」）
 
 ## 实施步骤
 
@@ -46,9 +50,46 @@ python3 -m pip install curl_cffi
 # 启动（前台测试）
 python3 codex-relay.py --port 8899
 
-# 生产：launchd 常驻（开机自启 + 崩溃重启）
+# 生产：两种方式任选其一
+# 方式 A（推荐）：按需懒启动——跟随 pi/pi-web 命令自动拉起（见下节）
+# 方式 B：launchd 常驻（开机自启 + 崩溃重启）
 # 参考仓库 scripts/com.didi.codex-relay.plist
 launchctl load ~/Library/LaunchAgents/com.didi.codex-relay.plist
+```
+
+### 1.1 relay 按需启动（推荐：懒加载，不常驻）
+
+**背景（2026-08-19 采用）**：relay 只服务 pi 的 openai-codex 通道，不需要开机自启。改为跟随 `pi` / `pi-web` 命令自动拉起——首次执行时检查 8899，未监听则后台启动并等端口就绪。
+
+在 `~/.zshrc` 追加（pi 用户级 shell 均可）：
+```bash
+# ---- codex-relay 懒启动（跟随 pi / pi-web 命令，不常驻）----
+_codex_relay_ensure() {
+  if lsof -nP -iTCP:8899 -sTCP:LISTEN >/dev/null 2>&1; then
+    return 0   # 已在运行
+  fi
+  nohup /usr/bin/python3 /Users/didi/tools/codex-relay/codex-relay.py --port 8899 \
+    >> /Users/didi/tools/codex-relay/relay.log 2>&1 &
+  local i=0
+  while [ $i -lt 16 ]; do
+    if lsof -nP -iTCP:8899 -sTCP:LISTEN >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.5; i=$((i+1))
+  done
+}
+pi()      { _codex_relay_ensure; command pi "$@"; }
+pi-web()  { _codex_relay_ensure; command pi-web "$@"; }
+```
+要点：`nohup ... &` 后台脱离会话；`lsof` 探测做幂等（重复执行不重复拉起）；`command pi` 绕过函数递归。已在本机实测：pi / pi-web 均可触发、进程数恒为 1。
+
+### 1.2 launchd 常驻（可选：多终端/定时场景）
+
+⚠️ launchd 只扫描 `~/Library/LaunchAgents/` 等固定目录，**仅把 plist 放 `~/tools/codex-relay/` 不会自动加载**（2026-08-19 实测踩坑：重启后 relay 未自启）。必须复制到扫描目录并加载：
+```bash
+cp ~/tools/codex-relay/com.didi.codex-relay.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.didi.codex-relay.plist
+# 验证：launchctl list | grep codex-relay
 ```
 
 ### 2. 配置 pi（关键：默认通道必须是 openai-codex）
