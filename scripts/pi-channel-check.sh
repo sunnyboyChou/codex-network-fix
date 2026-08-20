@@ -72,14 +72,21 @@ else
   ISSUES+=("auth.json: openai-codex type=$AT")
 fi
 
-# ---------- 4. relay 服务 ----------
+# ---------- 4. relay 服务（懒启动模式：看端口，不看 launchd）----------
 echo -e "\n[4/6] codex-relay 服务 (port 8899)"
-PID=$(launchctl list 2>/dev/null | awk -v l="$RELAY_LABEL" '$3==l {print $1}')
-if [[ -n "$PID" && "$PID" != "-" ]]; then
-  ok "relay 运行中 (PID $PID)"
+# 懒启动策略（2026-08-19 起）：relay 跟随 pi/pi-web 按需拉起，不常驻。
+# 因此检测以“端口 8899 是否监听”为准；launchd 记录只是可选项（常驻模式才有）。
+if lsof -nP -iTCP:8899 -sTCP:LISTEN >/dev/null 2>&1; then
+  RELAY_PID=$(lsof -nP -iTCP:8899 -sTCP:LISTEN 2>/dev/null | tail -1 | awk '{print $2}')
+  ok "relay 运行中 (PID $RELAY_PID)"
 else
-  fail "relay 未运行（launchctl 无 ${RELAY_LABEL}）"
-  ISSUES+=("relay 未运行")
+  fail "relay 未运行（端口 8899 未监听）"
+  ISSUES+=("relay 未运行（8899 未监听）")
+fi
+# 顺带提示 launchd 常驻模式的状态（信息性，不影响判断）
+LDPID=$(launchctl list 2>/dev/null | awk -v l="$RELAY_LABEL" '$3==l {print $1}')
+if [[ -n "$LDPID" && "$LDPID" != "-" ]]; then
+  info "launchd 常驻模式也在运行 (PID $LDPID)——注意避免与懒启动实例重复"
 fi
 if [[ -f "$RELAY_LOG" ]]; then
   LAST_TS=$(stat -f "%m" "$RELAY_LOG" 2>/dev/null)
@@ -188,8 +195,8 @@ PYEOF
       echo "   ✅ models.json 已修复（备份: $(basename $BK)）"
     fi
   fi
-  # 修复 3: relay 未运行 → 重启
-  if [[ -z "$PID" || "$PID" == "-" ]]; then
+  # 修复 3: relay 未运行（端口 8899 未监听）→ 懒启动
+  if ! lsof -nP -iTCP:8899 -sTCP:LISTEN >/dev/null 2>&1; then
     if [[ "$MODE" == "--fix" ]]; then
       read -p "  启动 codex-relay 服务？[y/N] " yn
       [[ "$yn" != "y" && "$yn" != "Y" ]] && { echo "  跳过"; } || DO_RELAY=1
@@ -197,13 +204,27 @@ PYEOF
       DO_RELAY=1
     fi
     if [[ "${DO_RELAY:-0}" == "1" ]]; then
-      [[ -x "$RELAY_SCRIPT" ]] && "$RELAY_SCRIPT" start || {
-        launchctl load "$HOME/Library/LaunchAgents/$RELAY_LABEL.plist" 2>/dev/null || \
-        echo "   ❌ 无法启动 relay（请检查 ${RELAY_SCRIPT}）"
-      }
-      sleep 1
-      NEWPID=$(launchctl list 2>/dev/null | awk -v l="$RELAY_LABEL" '$3==l {print $1}')
-      [[ -n "$NEWPID" && "$NEWPID" != "-" ]] && echo "   ✅ relay 已启动 (PID $NEWPID)" || echo "   ⚠️ relay 启动失败，请手动检查"
+      # 懒启动（与 SKILL.md 1.1 zshrc 函数逻辑一致）：后台拉起 + 等待端口就绪
+      RELAY_PY="$HOME/tools/codex-relay/codex-relay.py"
+      if [[ ! -f "$RELAY_PY" ]]; then
+        echo "   ❌ 找不到 $RELAY_PY"
+      elif lsof -nP -iTCP:8899 -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "   ℹ️ 端口 8899 已监听，无需启动"
+      else
+        nohup /usr/bin/python3 "$RELAY_PY" --port 8899 >> "$RELAY_LOG" 2>&1 &
+        # 等待端口就绪（最多 8s）
+        i=0
+        while [ $i -lt 16 ]; do
+          lsof -nP -iTCP:8899 -sTCP:LISTEN >/dev/null 2>&1 && break
+          sleep 0.5; i=$((i+1))
+        done
+      fi
+      if lsof -nP -iTCP:8899 -sTCP:LISTEN >/dev/null 2>&1; then
+        NEWPID=$(lsof -nP -iTCP:8899 -sTCP:LISTEN 2>/dev/null | tail -1 | awk '{print $2}')
+        echo "   ✅ relay 已启动并监听 8899 (PID $NEWPID)"
+      else
+        echo "   ⚠️ relay 启动失败，请检查 $RELAY_LOG"
+      fi
     fi
   fi
   echo -e "\n${CYAN}修复完成，建议重跑一次本脚本确认。${NC}"
